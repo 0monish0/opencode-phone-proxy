@@ -4,6 +4,8 @@ Keep your Linux laptop on campus Wi-Fi and route **only OpenCode** through an HT
 
 This is for the common campus situation where the laptop must stay on the college network, the phone has usable mobile data, and USB tethering works but you do not want every application on the laptop to switch to the phone connection.
 
+> **Windows 11 users:** use the native tray app in [`windows/`](windows/README.md). It does the same job with auto-detection, a setup wizard, and a tray menu. The Bash script below is for Linux.
+
 ## What it does
 
 - Detects the Android USB-tether interface (for example `usb0`, `enx...`, or `enp0s20f0u4`).
@@ -99,6 +101,24 @@ CLI:
 ```
 
 Close OpenCode normally when you are finished. The script will restore its temporary network changes and restart a clean OpenCode service.
+
+## Windows 11 app
+
+The `windows/` folder contains a self-contained WinForms tray app (`OpenCodePhoneProxy.exe`,
+version 1.1.0) for Windows 11 x64:
+
+- Auto-detects the Android USB-tether adapter and OpenCode install.
+- Manual fallback: type the phone address and Browse for `OpenCode.exe`.
+- One-time setup saved under `%APPDATA%\OpenCodePhoneProxy`.
+- Keeps Wi-Fi as the default route by temporarily raising the USB adapter metric
+  (one UAC prompt; OpenCode stays non-admin).
+- Launches OpenCode with a process-scoped proxy and restores the network on exit.
+- Tray menu for launch, stop, test, settings, log, autostart, uninstall, and exit.
+- Clean uninstaller removes the app, settings, logs, autostart, shortcuts, and any
+  pending network change. OpenCode is never touched.
+
+See [`windows/README.md`](windows/README.md) for the phone checklist, install
+steps, troubleshooting, and build instructions.
 
 ## Options
 
@@ -267,9 +287,17 @@ make clean     # remove dist/
 │   └── TROUBLESHOOTING.md
 ├── tests/
 │   └── smoke.sh
+├── windows/                  # Windows 11 tray app (C# .NET 8)
+│   ├── src/OpenCodePhoneProxy/
+│   ├── install.ps1 / install.cmd
+│   ├── uninstall.ps1 / uninstall.cmd
+│   ├── build.ps1
+│   ├── build.sh
+│   └── README.md
 └── .github/workflows/
     ├── ci.yml
-    └── release.yml
+    ├── release.yml
+    └── windows.yml
 ```
 
 ## Versioning

@@ -2,6 +2,57 @@
 
 All notable changes to this project are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-22
+
+Windows tray app only. The Linux `opencode-phone-proxy.sh` remains at 1.0.0 and is
+unchanged.
+
+### Added
+
+- Native Windows 11 tray app (`OpenCodePhoneProxy.exe`, C# .NET 8 WinForms,
+  self-contained `win-x64`, no runtime install).
+- First-run setup wizard with Phone, OpenCode, and Options tabs.
+- Android USB-tether adapter detection by RNDIS/Android/USB description scoring,
+  with virtual adapters (Hyper-V, VMware, VirtualBox, WSL, VPN, Tailscale) excluded.
+- Phone address auto-fill from the adapter gateway with manual override.
+- OpenCode auto-detection from known install folders, a bounded search, `where.exe`,
+  and a manual Browse fallback.
+- Route protection via `Get-NetIPInterface` / `Set-NetIPInterface` interface metrics,
+  using a momentary elevated helper so OpenCode stays non-admin.
+- Persisted route snapshot with restore on OpenCode exit, app exit, next start after
+  a crash, and uninstall.
+- Proxy probe through `curl.exe` that compares the phone egress IP with the PC's
+  direct IP for HTTP, HTTPS, SOCKS5, and SOCKS5H.
+- Process-scoped proxy environment (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`,
+  `NO_PROXY`, `NODE_USE_ENV_PROXY`) plus `--proxy-server`, without touching the
+  Windows system proxy.
+- Tray menu: status, Launch, Stop, Test, Settings, View log, Start with Windows,
+  Uninstall, Exit.
+- Opt-in autostart via the `HKCU` Run key.
+- Clean uninstall via the tray menu or `uninstall.ps1`, with `-KeepSettings`.
+- `install.ps1` that copies the app to `%LOCALAPPDATA%\Programs\OpenCodePhoneProxy`
+  and creates a Start Menu shortcut.
+- Double-click `install.cmd` / `uninstall.cmd` wrappers for users who do not want
+  to run PowerShell manually.
+- SHA-256 checksum alongside the release zip.
+- `--selftest` mode covering settings, proxy URL validation, argument parsing,
+  adapter enumeration, OpenCode discovery, and route-capture parsing.
+- GitHub Actions `windows-latest` workflow that builds, self-tests, publishes, and
+  uploads `OpenCodePhoneProxy-v1.1.0-win-x64.zip`.
+- Windows setup, troubleshooting, and build documentation.
+
+### Known limitations
+
+- The exe is unsigned, so SmartScreen may warn on first run.
+- Route protection needs one UAC approval per launch; declining it still launches
+  OpenCode, but USB tethering may become the default route.
+- Windows x64 only; ARM64 is not built yet.
+- Every Proxy must accept connections on the tethered interface.
+- A new mobile IP is not guaranteed after airplane mode; the app reports the egress
+  IP but does not rotate it.
+- Functional validation is on GitHub Actions `windows-latest`; the Linux cross-build
+  proves compilation and packaging only.
+
 ## [1.0.0] - 2026-11-21
 
 ### Added
