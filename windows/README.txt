@@ -20,7 +20,8 @@ QUICK START
 
 3. First-run setup
    - Phone tab: select the USB tether adapter, click "Test connection".
-     The test should show the phone's mobile IP, not your PC's IP.
+     The test shows the phone's egress IP and compares it with your
+     Wi-Fi/Ethernet IP when a separate connection is available.
    - OpenCode tab: the app auto-detects OpenCode. If not found, click
      Browse and select OpenCode.exe.
    - Options tab: leave "Keep USB tethering from becoming the default route"
@@ -69,10 +70,17 @@ TROUBLESHOOTING
   - Confirm the port matches (default 8080).
   - Try HTTP instead of SOCKS5, or the other way around.
 
-"Proxy IP matches this PC"
+"Proxy IP matches this PC's separate connection"
   - The phone may be on Wi-Fi instead of mobile data.
   - Or Every Proxy is not actually intercepting requests.
   - Turn off phone Wi-Fi and test again.
+  - If no separate Wi-Fi/Ethernet connection is active, the app says the
+    comparison was skipped instead of warning.
+
+OpenCode says "Can't reach this server"
+  - This is OpenCode's own local server, not the phone proxy.
+  - Use the tray menu -> "Stop OpenCode", then launch again.
+  - If it persists, update OpenCode Desktop.
 
 OpenCode not found
   - Settings -> OpenCode -> Browse -> select OpenCode.exe
