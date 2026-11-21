@@ -15,7 +15,7 @@
 - Branch `windows`, worktree `/home/monish/Documents/PROJECTS/proxy-windows`; never modify `/home/monish/Documents/PROJECTS/proxy` or `/home/monish/Documents/PROJECTS/proxy-v2`.
 - Windows app version `1.1.0`; Linux `opencode-phone-proxy.sh` stays `1.0.0`.
 - Target `net8.0-windows`, `win-x64`, self-contained single-file, no runtime install.
-- App runs as the normal user; only the momentary route-metric helper elevates.
+- App runs as the normal user; only the elevated route-metric helper elevates, and one UAC prompt covers both apply and restore for a launch.
 - Never change the Windows system proxy or the parent process environment.
 - All settings live under `%APPDATA%\OpenCodePhoneProxy`; all logs under `logs\app.log`.
 - No paid dependencies, no code signing, no telemetry.
@@ -140,11 +140,13 @@
 - `NetworkRouteGuard.Capture(int ifIndex)` → `RouteSnapshot?`.
 - `NetworkRouteGuard.ApplyHighMetric(RouteSnapshot)` → `RouteChangeResult` (`Applied`, `Declined`, `Failed`).
 - `NetworkRouteGuard.Restore(RouteSnapshot)` → `RouteChangeResult`.
-- `Elevation.IsAdministrator` → `bool`; `Elevation.RunElevated(string args)` → `int?` (null = declined).
+- `NetworkRouteGuard.BeginSessionAsync(RouteSnapshot)` → live `RouteSession` over one elevated helper; `IsRestored(RouteSnapshot)` → `bool` read-only check.
+- `RouteSession.Restore()` / `Keep()` / `Dispose()` → restore through the helper, leave the metric with the snapshot pending, or crash-safe cleanup.
+- `Elevation.IsAdministrator` → `bool`; `Elevation.StartElevated(string args, out bool declined)` → `Process?`; `Elevation.RunElevated(string args)` → `int?` (null = declined).
 
 - [ ] **Step 1:** Read metrics with `Get-NetIPInterface -InterfaceIndex <n> -AddressFamily IPv4/IPv6`; parse `InterfaceMetric|AutomaticMetric`.
 - [ ] **Step 2:** Set IPv4/IPv6 metric to 9999; on restore, use `-AutomaticMetric Enabled` when it was automatic, else the saved number.
-- [ ] **Step 3:** Add hidden `--elevated-route-set` / `--elevated-route-restore` modes that perform one change, write a result file, and exit without UI.
+- [ ] **Step 3:** Add hidden `--elevated-route-session` (apply, hold, restore/keep over a named pipe) plus one-shot `--elevated-route-apply` / `--elevated-route-restore` fallback modes that perform one change, write a result file, and exit without UI.
 - [ ] **Step 4:** Persist the snapshot in settings before applying; clear it only after a confirmed restore.
 - [ ] **Step 5:** Selftest captures the current adapter snapshot read-only and asserts parsing; never changes metrics in selftest.
 - [ ] **Step 6:** Commit `feat(windows): guard default route`.

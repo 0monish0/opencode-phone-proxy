@@ -18,7 +18,11 @@ unchanged.
 - OpenCode auto-detection from known install folders, a bounded search, `where.exe`,
   and a manual Browse fallback.
 - Route protection via `Get-NetIPInterface` / `Set-NetIPInterface` interface metrics,
-  using a momentary elevated helper so OpenCode stays non-admin.
+  using one elevated helper session per launch so OpenCode stays non-admin and restore
+  does not need a second UAC prompt.
+- Crash-safe helper session: closing the pipe restores the metric if the tray app
+  disappears, and a pending snapshot is reused instead of saving the guarded metric as
+  the baseline when an earlier restore was declined.
 - Persisted route snapshot with restore on OpenCode exit, app exit, next start after
   a crash, and uninstall.
 - Proxy probe through `curl.exe` that compares the phone egress IP with the PC's

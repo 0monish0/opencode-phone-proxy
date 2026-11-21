@@ -1,5 +1,6 @@
 OpenCode Phone Proxy - Windows 11
 =================================
+Developed by Monish.
 
 Routes only OpenCode through an HTTP/SOCKS proxy running on your Android phone
 over USB tethering. Windows and your other apps stay on their normal network.
@@ -23,7 +24,8 @@ QUICK START
    - OpenCode tab: the app auto-detects OpenCode. If not found, click
      Browse and select OpenCode.exe.
    - Options tab: leave "Keep USB tethering from becoming the default route"
-     checked. Windows will ask for administrator approval when launching.
+     checked. Windows asks for administrator approval once when launching;
+     the same helper restores the setting when OpenCode closes.
 
 4. Launch
    - Right-click the tray icon -> "Launch OpenCode".

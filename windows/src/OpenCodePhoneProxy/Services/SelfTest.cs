@@ -1,3 +1,4 @@
+using System.IO.Pipes;
 using OpenCodePhoneProxy.Models;
 
 namespace OpenCodePhoneProxy.Services;
@@ -86,6 +87,119 @@ public static class SelfTest
                        arguments[0] == "--foo" &&
                        arguments[1] == "bar baz" &&
                        arguments[2] == "--x";
+            });
+
+            Check("route-session", () =>
+            {
+                var snapshot = new RouteSnapshot
+                {
+                    InterfaceIndex = 1,
+                    AdapterName = "selftest",
+                    V4Metric = 25,
+                    V4Automatic = false
+                };
+
+                var allOk = true;
+
+                NamedPipeServerStream NewServer(string pipeName) =>
+                    new(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+                var pipeName = "ocpp-selftest-" + Guid.NewGuid().ToString("N");
+                using (var server = NewServer(pipeName))
+                {
+                    var restoreCalls = 0;
+                    var helper = Task.Run(() => RouteSessionProtocol.Run(
+                        snapshot,
+                        pipeName,
+                        _ => RouteChangeResult.Applied,
+                        _ =>
+                        {
+                            Interlocked.Increment(ref restoreCalls);
+                            return RouteChangeResult.Applied;
+                        },
+                        logger,
+                        5_000));
+                    server.WaitForConnection();
+                    var ok = server.ReadByte() == RouteSessionProtocol.Applied;
+                    server.WriteByte(RouteSessionProtocol.RestoreRequested);
+                    server.Flush();
+                    ok &= server.ReadByte() == RouteSessionProtocol.RestoreDone;
+                    ok &= helper.Wait(15_000) && helper.Result == 0 && restoreCalls == 1;
+                    lines.Add("  route-session-restore: " + (ok ? "PASS" : "FAIL"));
+                    allOk &= ok;
+                }
+
+                pipeName = "ocpp-selftest-" + Guid.NewGuid().ToString("N");
+                using (var server = NewServer(pipeName))
+                {
+                    var restoreCalls = 0;
+                    var helper = Task.Run(() => RouteSessionProtocol.Run(
+                        snapshot,
+                        pipeName,
+                        _ => RouteChangeResult.Applied,
+                        _ =>
+                        {
+                            Interlocked.Increment(ref restoreCalls);
+                            return RouteChangeResult.Applied;
+                        },
+                        logger,
+                        5_000));
+                    server.WaitForConnection();
+                    var ok = server.ReadByte() == RouteSessionProtocol.Applied;
+                    server.WriteByte(RouteSessionProtocol.KeepRequested);
+                    server.Flush();
+                    ok &= server.ReadByte() == RouteSessionProtocol.KeepRequested;
+                    ok &= helper.Wait(15_000) && helper.Result == 0 && restoreCalls == 0;
+                    lines.Add("  route-session-keep: " + (ok ? "PASS" : "FAIL"));
+                    allOk &= ok;
+                }
+
+                pipeName = "ocpp-selftest-" + Guid.NewGuid().ToString("N");
+                var crashServer = NewServer(pipeName);
+                var crashRestoreCalls = 0;
+                var crashHelper = Task.Run(() => RouteSessionProtocol.Run(
+                    snapshot,
+                    pipeName,
+                    _ => RouteChangeResult.Applied,
+                    _ =>
+                    {
+                        Interlocked.Increment(ref crashRestoreCalls);
+                        return RouteChangeResult.Applied;
+                    },
+                    logger,
+                    5_000));
+                crashServer.WaitForConnection();
+                var crashOk = crashServer.ReadByte() == RouteSessionProtocol.Applied;
+                crashServer.Dispose();
+                crashOk &= crashHelper.Wait(15_000) &&
+                            crashHelper.Result == 0 &&
+                            crashRestoreCalls == 1;
+                lines.Add("  route-session-crash: " + (crashOk ? "PASS" : "FAIL"));
+                allOk &= crashOk;
+
+                pipeName = "ocpp-selftest-" + Guid.NewGuid().ToString("N");
+                using (var server = NewServer(pipeName))
+                {
+                    var restoreCalls = 0;
+                    var helper = Task.Run(() => RouteSessionProtocol.Run(
+                        snapshot,
+                        pipeName,
+                        _ => RouteChangeResult.Failed,
+                        _ =>
+                        {
+                            Interlocked.Increment(ref restoreCalls);
+                            return RouteChangeResult.Applied;
+                        },
+                        logger,
+                        5_000));
+                    server.WaitForConnection();
+                    var ok = server.ReadByte() == RouteSessionProtocol.Failed;
+                    ok &= helper.Wait(15_000) && helper.Result == 1 && restoreCalls == 0;
+                    lines.Add("  route-session-fail: " + (ok ? "PASS" : "FAIL"));
+                    allOk &= ok;
+                }
+
+                return allOk;
             });
 
             Check("logger", () =>

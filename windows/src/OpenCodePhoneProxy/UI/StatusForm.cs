@@ -196,7 +196,7 @@ public sealed class StatusForm : Form
 
         var footer = UiTheme.Note(
             "Phone proxy is used only by the OpenCode process. Windows system proxy and your other apps are not changed. " +
-            "Version " + Program.Version + ".",
+            "Version " + Program.Version + "  ·  Developed by Monish.",
             540);
         footer.Margin = new Padding(0, 18, 0, 0);
 

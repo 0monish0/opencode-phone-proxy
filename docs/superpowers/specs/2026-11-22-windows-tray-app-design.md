@@ -76,7 +76,8 @@ OpenCodePhoneProxy.exe (tray, normal user)
   ├─ Logger               %APPDATA%\OpenCodePhoneProxy\logs\app.log
   ├─ PhoneLinkDetector    NetworkInterface + gateway discovery
   ├─ NetworkRouteGuard    PowerShell Get/Set-NetIPInterface
-  │    └─ elevated helper mode of the same exe (UAC, momentary)
+  │    └─ --elevated-route-session helper (one UAC, held on a named pipe)
+  ├─ RouteSession         apply/restore over the helper pipe; crash-safe keep/restore
   ├─ ProxyProbe           curl.exe (http/https/socks5) + direct-IP comparison
   ├─ OpenCodeLocator      known paths + bounded recursive search + manual browse
   ├─ OpenCodeLauncher     close existing, start with scoped env, monitor exit
@@ -99,9 +100,27 @@ Windows picks a default route by interface metric. Before launch, the app record
 USB adapter's IPv4/IPv6 metric and automatic-metric state, then sets the metric to
 9999. This keeps Wi-Fi as the default route while the USB subnet route remains usable.
 Restoration happens when OpenCode exits, when the app exits, and after a crash on the
-next start. The change needs administrator rights, so a tiny `--elevated-route-*` mode
-of the same exe is started with `Verb=runas`; OpenCode itself stays unelevated.
-If the user declines UAC, the app continues without route protection and says so.
+next start. The change needs administrator rights, but OpenCode itself stays unelevated.
+
+A normal session uses one UAC prompt. The tray app starts a tiny
+`--elevated-route-session` helper of the same exe with `Verb=runas` and talks to it over
+a random named pipe:
+
+- helper applies the metric, writes `A`, and stays alive;
+- parent sends `R` to restore (helper replies `D` on success or `X` on failure);
+- parent sends `K` when the tray app exits while OpenCode is still running (helper
+  acknowledges and exits without restoring);
+- if the pipe closes because the tray app crashed, the helper restores immediately.
+
+If the helper cannot start, the app falls back to the existing one-shot
+`--elevated-route-apply` path. If the user declines UAC, the app continues without
+route protection and says so.
+
+The snapshot is persisted before the metric is changed. If a restore is declined, the
+next launch reuses that snapshot for the same interface instead of capturing the
+already-guarded 9999 metric as the new baseline. A read-only `IsRestored` check clears
+a stale snapshot without another UAC prompt when the adapter metric already matches the
+saved value.
 
 ### Proxy scoping
 

@@ -26,6 +26,11 @@ internal static class Program
             return SelfTest.Run();
         }
 
+        if (args.Length >= 1 && args[0].Equals("--elevated-route-session", StringComparison.OrdinalIgnoreCase))
+        {
+            return ElevatedRouteCommand.RunSession(args);
+        }
+
         if (args.Length >= 1 && args[0].Equals("--elevated-route-apply", StringComparison.OrdinalIgnoreCase))
         {
             return ElevatedRouteCommand.RunApply(args);
@@ -120,6 +125,55 @@ internal static class ConsoleBridge
 
 internal static class ElevatedRouteCommand
 {
+    /// <summary>
+    /// Elevated helper used by a normal tray session. It applies the metric,
+    /// reports success, then waits on a named pipe. A restore request or the
+    /// pipe closing makes it put the original metrics back, so a tray-app crash
+    /// cannot leave the adapter metric stuck.
+    /// </summary>
+    public static int RunSession(string[] args)
+    {
+        if (args.Length < 3)
+        {
+            return 2;
+        }
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(args[1]));
+            var snapshot = JsonSerializer.Deserialize<RouteSnapshot>(json);
+            if (snapshot is null)
+            {
+                return 2;
+            }
+
+            var store = new SettingsStore();
+            var logger = new Logger(store.DataDirectory);
+            var guard = new NetworkRouteGuard(logger);
+
+            return RouteSessionProtocol.Run(
+                snapshot,
+                args[2],
+                guard.ApplyDirect,
+                guard.RestoreDirect,
+                logger);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                new Logger(new SettingsStore().DataDirectory)
+                    .Error("Elevated route session failed: " + ex.Message);
+            }
+            catch
+            {
+                // Never let cleanup crash the helper.
+            }
+
+            return 1;
+        }
+    }
+
     public static int RunApply(string[] args)
     {
         if (args.Length < 3)

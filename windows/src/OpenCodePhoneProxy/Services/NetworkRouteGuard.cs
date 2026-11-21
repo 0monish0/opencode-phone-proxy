@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
@@ -57,6 +58,131 @@ public sealed class NetworkRouteGuard
         return ViaElevated("--elevated-route-restore", snapshot);
     }
 
+    /// <summary>
+    /// Start one elevated helper that applies the metric and stays alive until
+    /// the tray app asks it to restore. This keeps a normal run to one UAC
+    /// prompt. Falls back to the one-shot apply path when the helper cannot be
+    /// started.
+    /// </summary>
+    public async Task<(RouteChangeResult Result, RouteSession? Session)> BeginSessionAsync(
+        RouteSnapshot snapshot,
+        CancellationToken cancellationToken = default)
+    {
+        if (Elevation.IsAdministrator)
+        {
+            var direct = ApplyDirect(snapshot);
+            return (direct, direct == RouteChangeResult.Applied
+                ? RouteSession.CreateDirect(this, snapshot, _log)
+                : null);
+        }
+
+        NamedPipeServerStream? pipe = null;
+        Process? helper = null;
+
+        try
+        {
+            var pipeName = "ocpp-route-" + Guid.NewGuid().ToString("N");
+            pipe = new NamedPipeServerStream(
+                pipeName,
+                PipeDirection.InOut,
+                1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous);
+
+            var json = JsonSerializer.Serialize(snapshot);
+            var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+            helper = Elevation.StartElevated(
+                $"--elevated-route-session {base64} \"{pipeName}\"",
+                out var declined);
+
+            if (helper is null)
+            {
+                pipe.Dispose();
+                return (declined ? RouteChangeResult.Declined : RouteChangeResult.Failed, null);
+            }
+
+            using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            connectTimeout.CancelAfter(TimeSpan.FromSeconds(120));
+
+            try
+            {
+                await pipe.WaitForConnectionAsync(connectTimeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                _log.Warn("The elevated route helper did not connect in time.");
+                await AbandonHelperAsync(pipe, helper).ConfigureAwait(false);
+                return (RouteChangeResult.Failed, null);
+            }
+
+            var status = await ReadByteAsync(pipe, TimeSpan.FromSeconds(45), cancellationToken)
+                .ConfigureAwait(false);
+
+            if (status == (byte)'A')
+            {
+                _log.Info("The elevated route helper applied the metric and is holding the session.");
+                return (RouteChangeResult.Applied, RouteSession.CreateHelper(snapshot, pipe, helper, _log));
+            }
+
+            _log.Warn("The elevated route helper did not apply the metric.");
+            await AbandonHelperAsync(pipe, helper).ConfigureAwait(false);
+            return (RouteChangeResult.Failed, null);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn("Could not start the elevated route session: " + ex.Message);
+            await AbandonHelperAsync(pipe, helper).ConfigureAwait(false);
+            return (RouteChangeResult.Failed, null);
+        }
+    }
+
+    /// <summary>
+    /// Read-only check used to clear a stale pending snapshot without asking for
+    /// administrator approval again.
+    /// </summary>
+    public bool IsRestored(RouteSnapshot snapshot)
+    {
+        var v4 = snapshot.V4Metric.HasValue ? ReadMetric("IPv4", snapshot.InterfaceIndex) : null;
+        if (snapshot.V4Metric.HasValue)
+        {
+            if (v4 is null)
+            {
+                return false;
+            }
+
+            if (snapshot.V4Automatic != v4.Value.Automatic)
+            {
+                return false;
+            }
+
+            if (!snapshot.V4Automatic && snapshot.V4Metric.Value != v4.Value.Metric)
+            {
+                return false;
+            }
+        }
+
+        var v6 = snapshot.V6Metric.HasValue ? ReadMetric("IPv6", snapshot.InterfaceIndex) : null;
+        if (snapshot.V6Metric.HasValue)
+        {
+            if (v6 is null)
+            {
+                return false;
+            }
+
+            if (snapshot.V6Automatic != v6.Value.Automatic)
+            {
+                return false;
+            }
+
+            if (!snapshot.V6Automatic && snapshot.V6Metric.Value != v6.Value.Metric)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public RouteChangeResult ApplyDirect(RouteSnapshot snapshot)
     {
         var v4 = SetMetric("IPv4", snapshot.InterfaceIndex, 9999);
@@ -88,6 +214,78 @@ public sealed class NetworkRouteGuard
 
         _log.Warn($"Failed to restore interface {snapshot.InterfaceIndex} metrics (IPv4={v4}, IPv6={v6}).");
         return RouteChangeResult.Failed;
+    }
+
+    private static async Task<byte?> ReadByteAsync(
+        Stream stream,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        var buffer = new byte[1];
+
+        try
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(0, 1), timeoutSource.Token)
+                .ConfigureAwait(false);
+            return read == 1 ? buffer[0] : null;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task AbandonHelperAsync(NamedPipeServerStream? pipe, Process? helper)
+    {
+        try
+        {
+            pipe?.Dispose();
+        }
+        catch
+        {
+            // Best effort.
+        }
+
+        if (helper is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            await helper.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Timed out or already gone.
+        }
+
+        try
+        {
+            if (!helper.HasExited)
+            {
+                helper.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // Already gone.
+        }
+        finally
+        {
+            helper.Dispose();
+        }
     }
 
     private RouteChangeResult ViaElevated(string verb, RouteSnapshot snapshot)
@@ -272,6 +470,36 @@ public static class Elevation
             {
                 return false;
             }
+        }
+    }
+
+    public static Process? StartElevated(string arguments, out bool declined)
+    {
+        declined = false;
+        var executable = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return null;
+        }
+
+        var info = new ProcessStartInfo(executable, arguments)
+        {
+            UseShellExecute = true,
+            Verb = "runas"
+        };
+
+        try
+        {
+            return Process.Start(info);
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            declined = true;
+            return null;
+        }
+        catch
+        {
+            return null;
         }
     }
 

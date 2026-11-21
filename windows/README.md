@@ -8,6 +8,7 @@ This is the Windows port of the Linux launcher in the parent folder. Linux users
 should keep using `opencode-phone-proxy.sh`.
 
 - Windows app version: **1.1.0**
+- Developed by **Monish**
 - Target: Windows 11 x64 (Windows 10 should work too)
 - No .NET runtime install needed; the exe is self-contained
 - Unsigned build: SmartScreen may warn once ("More info" → "Run anyway")
@@ -126,8 +127,15 @@ OpenCode or your OpenCode data.
 - Settings → OpenCode → Browse → select the exe once. The path is remembered.
 
 **UAC prompt every launch**
-- Expected once per launch while route protection is on. The prompt comes from a
-  tiny helper mode of the same exe and only changes the USB adapter's metric.
+- Expected once per launch while route protection is on. One prompt covers both
+  applying and restoring the metric; closing OpenCode does not prompt again. The
+  prompt comes from a tiny helper mode of the same exe and only changes the USB
+  adapter's metric.
+
+**A restore was declined earlier**
+- The original metric is still saved, not overwritten. Launch again and approve the
+  UAC prompt, then stop OpenCode; the helper restores the saved value. The app also
+  retries automatically on the next start.
 
 **SmartScreen warning**
 - The exe is unsigned. Click "More info" → "Run anyway". Verify the SHA-256 if

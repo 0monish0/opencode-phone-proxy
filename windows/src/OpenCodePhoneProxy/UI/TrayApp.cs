@@ -30,6 +30,7 @@ public sealed class TrayApp : ApplicationContext
     private bool _polling;
     private bool _openCodeRunning;
     private bool _exiting;
+    private RouteSession? _session;
 
     public bool StartupCanceled { get; private set; }
 
@@ -242,7 +243,27 @@ public sealed class TrayApp : ApplicationContext
                 }
                 else
                 {
-                    snapshot = _guard.Capture(link.InterfaceIndex, link.AdapterName);
+                    var pending = _settings.PendingRoute;
+                    if (pending is not null && pending.InterfaceIndex == link.InterfaceIndex)
+                    {
+                        // A previous restore may have been declined. That snapshot is
+                        // the only copy of the original metric; capturing now would
+                        // save the already-guarded 9999 metric as the baseline.
+                        snapshot = pending;
+                        _log.Info("Reusing the pending route baseline for the USB adapter.");
+                    }
+                    else
+                    {
+                        if (pending is not null)
+                        {
+                            _log.Warn(
+                                $"Replacing the pending route baseline for interface {pending.InterfaceIndex} " +
+                                $"with the connected adapter {link.InterfaceIndex}.");
+                        }
+
+                        snapshot = _guard.Capture(link.InterfaceIndex, link.AdapterName);
+                    }
+
                     if (snapshot is null)
                     {
                         ShowMessage(
@@ -254,17 +275,34 @@ public sealed class TrayApp : ApplicationContext
                     {
                         _settings.PendingRoute = snapshot;
                         _store.Save(_settings);
-                        var change = _guard.ApplyHighMetric(snapshot);
-                        if (change != RouteChangeResult.Applied)
+
+                        var (change, session) = await _guard.BeginSessionAsync(snapshot);
+                        if (change == RouteChangeResult.Applied && session is not null)
+                        {
+                            _session?.Dispose();
+                            _session = session;
+                            _log.Info("Route protection is active for this OpenCode session.");
+                        }
+                        else
                         {
                             var reason = change == RouteChangeResult.Declined
                                 ? "Administrator approval was declined."
                                 : "Windows rejected the interface metric change.";
+
+                            if (_guard.IsRestored(snapshot))
+                            {
+                                _settings.PendingRoute = null;
+                                _store.Save(_settings);
+                            }
+                            else
+                            {
+                                _log.Warn(
+                                    "Keeping the pending route baseline because the adapter metric is still changed.");
+                            }
+
                             ShowMessage(
                                 reason + "\n\nOpenCode will start, but USB tethering may become the default route.",
                                 MessageBoxIcon.Warning);
-                            _settings.PendingRoute = null;
-                            _store.Save(_settings);
                             snapshot = null;
                         }
                     }
@@ -508,12 +546,51 @@ public sealed class TrayApp : ApplicationContext
 
     private void RestorePendingRoute(bool showWarning)
     {
+        var session = _session;
+        _session = null;
+
+        if (session is not null)
+        {
+            var liveResult = session.Restore();
+            session.Dispose();
+            if (liveResult == RouteChangeResult.Applied)
+            {
+                if (_settings.PendingRoute is not null &&
+                    _settings.PendingRoute.InterfaceIndex == session.Snapshot.InterfaceIndex)
+                {
+                    _settings.PendingRoute = null;
+                    _store.Save(_settings);
+                }
+
+                _log.Info("Route metric restored through the live helper session.");
+                return;
+            }
+
+            var liveMessage =
+                "The route helper could not confirm the restore. The app will try again next time.";
+            _log.Warn(liveMessage);
+            if (showWarning)
+            {
+                ShowMessage(liveMessage, MessageBoxIcon.Warning);
+            }
+
+            return;
+        }
+
         if (_settings.PendingRoute is null)
         {
             return;
         }
 
         var snapshot = _settings.PendingRoute;
+        if (_guard.IsRestored(snapshot))
+        {
+            _settings.PendingRoute = null;
+            _store.Save(_settings);
+            _log.Info("The adapter metric already matches the saved baseline; cleared the pending route.");
+            return;
+        }
+
         var result = _guard.Restore(snapshot);
         if (result == RouteChangeResult.Applied)
         {
@@ -573,6 +650,9 @@ public sealed class TrayApp : ApplicationContext
         RestorePendingRoute(showWarning: false);
         var directory = Path.GetDirectoryName(Environment.ProcessPath ?? "") ?? AppContext.BaseDirectory;
         Uninstaller.Run(_log, directory, keepSettings: false);
+        // The uninstaller restores the route itself; don't show the
+        // "route protection kept" exit path just because OpenCode is open.
+        _openCodeRunning = false;
         ExitApp();
     }
 
@@ -602,8 +682,12 @@ public sealed class TrayApp : ApplicationContext
         if (_openCodeRunning)
         {
             // Restoring now could make USB tethering the default route while OpenCode
-            // is still working. Keep the guard and restore it on the next app start.
+            // is still working. Tell the helper to leave the metric and exit; the
+            // persisted snapshot is restored on the next app start.
             _log.Info("Tray app exiting while OpenCode is running; route restore is deferred.");
+            _session?.Keep();
+            _session?.Dispose();
+            _session = null;
             _tray.ShowBalloonTip(
                 4000,
                 "Network settings kept",
@@ -658,6 +742,8 @@ public sealed class TrayApp : ApplicationContext
     {
         if (disposing)
         {
+            _session?.Dispose();
+            _session = null;
             _pollTimer.Dispose();
             _tray.Dispose();
             _statusForm.Dispose();

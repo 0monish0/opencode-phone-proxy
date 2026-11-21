@@ -75,12 +75,17 @@ $settingsPath = Join-Path $env:APPDATA "OpenCodePhoneProxy\settings.json"
 if (Test-Path -LiteralPath $settingsPath) {
     Write-Step "Restoring any network setting the app changed..."
     $restored = $false
+    $attempted = $false
     foreach ($dir in $installDirs) {
         $exePath = Join-Path $dir "OpenCodePhoneProxy.exe"
         if (Test-Path -LiteralPath $exePath) {
             try {
-                & $exePath --restore-route | Out-Null
-                $restored = $true
+                $restore = Start-Process -FilePath $exePath -ArgumentList "--restore-route" `
+                    -Wait -PassThru -WindowStyle Hidden
+                $attempted = $true
+                if ($restore.ExitCode -eq 0) {
+                    $restored = $true
+                }
                 break
             }
             catch {
@@ -89,8 +94,12 @@ if (Test-Path -LiteralPath $settingsPath) {
         }
     }
 
-    if (-not $restored) {
+    if (-not $attempted) {
         Write-Step "No restore helper was found; continuing."
+    }
+    elseif (-not $restored) {
+        Write-Step "The network setting could not be restored automatically."
+        Write-Step "Check the USB adapter metric in Windows network settings if needed."
     }
 }
 else {

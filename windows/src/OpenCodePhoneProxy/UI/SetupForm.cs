@@ -121,7 +121,7 @@ public sealed class SetupForm : Form
         };
         var footerNote = new Label
         {
-            Text = "Saved on this PC only.",
+            Text = "Developed by Monish  ·  Saved on this PC only.",
             AutoSize = true,
             Font = UiTheme.SmallFont,
             ForeColor = UiTheme.Muted,
