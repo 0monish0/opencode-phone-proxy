@@ -213,7 +213,8 @@ public sealed class TrayApp : ApplicationContext
             if (_settings.TestProxyBeforeLaunch)
             {
                 _tray.Text = "OpenCode Phone Proxy - testing...";
-                var test = await _probe.TestAsync(config);
+                var directSource = PhoneLinkDetector.DirectSourceAddress(config.Host, link?.InterfaceIndex);
+                var test = await _probe.TestAsync(config, directSource);
                 _log.Info("Pre-launch proxy test: " + test.Summary);
                 if (!test.Success || test.SameEgress)
                 {
@@ -396,7 +397,8 @@ public sealed class TrayApp : ApplicationContext
         try
         {
             _tray.Text = "OpenCode Phone Proxy - testing...";
-            var result = await _probe.TestAsync(config);
+            var directSource = PhoneLinkDetector.DirectSourceAddress(config.Host, link?.InterfaceIndex);
+            var result = await _probe.TestAsync(config, directSource);
             _reachable = result.Success && !result.SameEgress;
             var details = result.Summary;
             if (!string.IsNullOrWhiteSpace(result.DirectIp))

@@ -18,9 +18,13 @@ should keep using `opencode-phone-proxy.sh`.
 1. Detects the Android USB-tether adapter and the phone's gateway address.
 2. Temporarily raises that adapter's interface metric so Wi-Fi stays the default
    route (one UAC prompt, OpenCode itself stays non-admin).
-3. Tests the phone proxy and shows the phone's public IP next to your PC's direct IP.
-4. Launches OpenCode with `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`,
-   `NODE_USE_ENV_PROXY=1`, and `--proxy-server`, scoped to that process only.
+3. Tests the phone proxy and compares it with the PC's **Wi-Fi/Ethernet** IP, not
+   the Windows default route. If the PC has no separate connection, the
+   comparison is skipped instead of showing a false warning.
+4. Launches OpenCode with `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and
+   `NO_PROXY` (loopback included), scoped to that process only. No
+   `--proxy-server` flag: OpenCode Desktop must reach its own local server
+   directly.
 5. Restores the network metric when OpenCode exits, when the app exits, and after
    a crash on the next start.
 6. Uninstalls cleanly: app, settings, logs, autostart, shortcuts, and any network
@@ -118,10 +122,21 @@ OpenCode or your OpenCode data.
 - Check the port (default 8080).
 - Try `http` instead of `socks5`, or the reverse.
 
-**"Proxy works, but its public IP matches this PC"**
+**"Proxy works, but its public IP matches this PC's separate connection"**
 - The phone is probably on Wi-Fi, or the proxy is not active.
-- Turn phone Wi-Fi off and test again.
+- Turn phone Wi-Fi off so it uses mobile data, then test again.
+- The app compares against the PC's Wi-Fi/Ethernet address. If the PC has no
+  separate connection, it says the comparison was skipped instead.
 - Note: airplane-mode toggling does not guarantee a new carrier IP.
+
+**OpenCode says "Can't reach this server"**
+- This is OpenCode's own local sidecar, not the phone proxy.
+- The app sets `NO_PROXY` for `localhost`, `127.0.0.1`, `::1`, and `0.0.0.0`,
+  and no longer passes Chromium's `--proxy-server`.
+- Fully quit OpenCode (tray menu → **Stop OpenCode**), then launch again.
+- If it persists, update OpenCode Desktop. Early 2.x builds routed loopback
+  traffic through `HTTP_PROXY` (OpenCode issue #52054). Logs are in
+  `%APPDATA%\ai.opencode.desktop\logs`.
 
 **OpenCode not found**
 - Settings → OpenCode → Browse → select the exe once. The path is remembered.

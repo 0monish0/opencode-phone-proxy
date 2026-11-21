@@ -110,8 +110,12 @@ public sealed class ProxyTestResult
     public bool Success { get; init; }
     public string? PublicIp { get; init; }
     public string? DirectIp { get; init; }
+    public string? DirectSourceAddress { get; init; }
     public long LatencyMs { get; init; }
     public string? Error { get; init; }
+
+    public bool DirectComparisonSkipped =>
+        Success && string.IsNullOrWhiteSpace(DirectIp);
 
     public bool SameEgress =>
         Success &&
@@ -135,8 +139,16 @@ public sealed class ProxyTestResult
 
             if (SameEgress)
             {
-                return $"Proxy works, but its public IP matches this PC ({PublicIp}). " +
-                       "The phone may be on Wi-Fi or the proxy may not be active.";
+                return $"Proxy works, but its public IP matches this PC's separate connection ({PublicIp}). " +
+                       "Turn off the phone's Wi-Fi so it uses mobile data, then test again.";
+            }
+
+            if (DirectComparisonSkipped)
+            {
+                var reason = string.IsNullOrWhiteSpace(DirectSourceAddress)
+                    ? "No separate Wi-Fi/Ethernet connection was available to compare."
+                    : $"Could not read this PC's public IP through {DirectSourceAddress}.";
+                return $"Connected. Phone egress IP: {PublicIp} ({LatencyMs} ms). " + reason;
             }
 
             return $"Connected. Phone egress IP: {PublicIp} ({LatencyMs} ms).";

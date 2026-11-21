@@ -80,6 +80,41 @@ public static class SelfTest
                 new ProxyConfig("bad host", 8080, "http").Validate() is not null &&
                 new ProxyConfig("192.168.42.129", 0, "http").Validate() is not null);
 
+            Check("proxy-result", () =>
+            {
+                var same = new ProxyTestResult
+                {
+                    TcpReachable = true,
+                    Success = true,
+                    PublicIp = "1.2.3.4",
+                    DirectIp = "1.2.3.4"
+                };
+                var skipped = new ProxyTestResult
+                {
+                    TcpReachable = true,
+                    Success = true,
+                    PublicIp = "5.6.7.8",
+                    LatencyMs = 42
+                };
+                var unreadable = new ProxyTestResult
+                {
+                    TcpReachable = true,
+                    Success = true,
+                    PublicIp = "5.6.7.8",
+                    DirectSourceAddress = "192.168.1.20",
+                    LatencyMs = 42
+                };
+                var failed = new ProxyTestResult { TcpReachable = false, Success = false, Error = "offline" };
+
+                return same.SameEgress &&
+                       !skipped.SameEgress &&
+                       skipped.DirectComparisonSkipped &&
+                       skipped.Summary.Contains("No separate Wi-Fi/Ethernet", StringComparison.Ordinal) &&
+                       unreadable.DirectComparisonSkipped &&
+                       unreadable.Summary.Contains("Could not read", StringComparison.Ordinal) &&
+                       !failed.DirectComparisonSkipped;
+            });
+
             Check("argument-split", () =>
             {
                 var arguments = OpenCodeLauncher.SplitArguments("--foo \"bar baz\" --x");
@@ -87,6 +122,23 @@ public static class SelfTest
                        arguments[0] == "--foo" &&
                        arguments[1] == "bar baz" &&
                        arguments[2] == "--x";
+            });
+
+            Check("launch-env", () =>
+            {
+                var info = OpenCodeLauncher.BuildStartInfo(
+                    new OpenCodeCandidate(Path.Combine(root, "OpenCode.exe"), "", "selftest"),
+                    new ProxyConfig("10.0.0.2", 8080, "http"),
+                    new AppSettings());
+
+                var noProxy = info.Environment["NO_PROXY"] ?? "";
+                var arguments = string.Join(" ", info.ArgumentList);
+                return info.Environment["HTTP_PROXY"] == "http://10.0.0.2:8080" &&
+                       info.Environment["HTTPS_PROXY"] == "http://10.0.0.2:8080" &&
+                       noProxy.Contains("127.0.0.1", StringComparison.Ordinal) &&
+                       noProxy.Contains("::1", StringComparison.Ordinal) &&
+                       noProxy.Contains("0.0.0.0", StringComparison.Ordinal) &&
+                       !arguments.Contains("--proxy-server", StringComparison.Ordinal);
             });
 
             Check("route-session", () =>

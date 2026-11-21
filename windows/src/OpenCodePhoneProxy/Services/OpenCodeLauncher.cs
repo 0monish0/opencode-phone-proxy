@@ -230,16 +230,14 @@ public sealed class OpenCodeLauncher
             info.Environment[key] = proxy.Url;
         }
 
-        info.Environment["NO_PROXY"] = "localhost,127.0.0.1,::1";
-        info.Environment["no_proxy"] = "localhost,127.0.0.1,::1";
-        info.Environment["NODE_USE_ENV_PROXY"] = "1";
-
-        // Chromium's flag helps the desktop app. Passing it to the CLI could make
-        // the CLI reject an unknown option, so only add it for the Electron build.
-        if (OpenCodeLocator.LooksLikeDesktop(candidate.Path))
-        {
-            info.ArgumentList.Add("--proxy-server=" + proxy.Url);
-        }
+        // OpenCode Desktop must reach its own sidecar on loopback. Never send
+        // 127.0.0.1 / localhost through the phone proxy, or the UI reports
+        // "Can't reach this server". Do not pass Chromium's --proxy-server:
+        // the env vars already cover OpenCode's traffic, and the flag can pull
+        // the desktop's local control connection into the proxy.
+        var noProxy = BuildNoProxy();
+        info.Environment["NO_PROXY"] = noProxy;
+        info.Environment["no_proxy"] = noProxy;
 
         foreach (var argument in SplitArguments(settings.OpenCodeArguments))
         {
@@ -247,6 +245,28 @@ public sealed class OpenCodeLauncher
         }
 
         return info;
+    }
+
+    internal static string BuildNoProxy()
+    {
+        var entries = new List<string>
+        {
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            "::1",
+            "[::1]",
+            "*.localhost"
+        };
+
+        var machine = Environment.MachineName;
+        if (!string.IsNullOrWhiteSpace(machine))
+        {
+            entries.Add(machine);
+            entries.Add(machine + ".local");
+        }
+
+        return string.Join(",", entries.Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
     public static IReadOnlyList<string> SplitArguments(string? input)

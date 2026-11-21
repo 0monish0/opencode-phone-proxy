@@ -14,7 +14,10 @@ public sealed class ProxyProbe
         _log = log;
     }
 
-    public async Task<ProxyTestResult> TestAsync(ProxyConfig config, CancellationToken cancellationToken = default)
+    public async Task<ProxyTestResult> TestAsync(
+        ProxyConfig config,
+        string? directSourceAddress = null,
+        CancellationToken cancellationToken = default)
     {
         var validation = config.Validate();
         if (validation is not null)
@@ -59,13 +62,20 @@ public sealed class ProxyProbe
             };
         }
 
-        var directIp = await DirectIpAsync(cancellationToken).ConfigureAwait(false);
+        // Compare against a real Wi-Fi/Ethernet egress, not the Windows default
+        // route. With USB tethering as the default route, an unbound direct curl
+        // leaves through the phone too, so every proxy test looked like a false
+        // "same IP" warning.
+        var directIp = directSourceAddress is null
+            ? null
+            : await DirectIpAsync(directSourceAddress, cancellationToken).ConfigureAwait(false);
         return new ProxyTestResult
         {
             TcpReachable = true,
             Success = true,
             PublicIp = proxy.Output,
             DirectIp = directIp,
+            DirectSourceAddress = directSourceAddress,
             LatencyMs = stopwatch.ElapsedMilliseconds
         };
     }
@@ -86,12 +96,15 @@ public sealed class ProxyProbe
         }
     }
 
-    public async Task<string?> DirectIpAsync(CancellationToken cancellationToken = default)
+    public async Task<string?> DirectIpAsync(
+        string sourceAddress,
+        CancellationToken cancellationToken = default)
     {
         var result = await RunCurlAsync(
             new[]
             {
                 "--noproxy", "*",
+                "--interface", sourceAddress,
                 "--max-time", "10",
                 "-fsS",
                 "https://api.ipify.org"

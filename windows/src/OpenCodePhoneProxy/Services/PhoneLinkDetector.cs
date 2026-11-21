@@ -104,6 +104,42 @@ public static class PhoneLinkDetector
                links.FirstOrDefault(link => IsCommonTetherGateway(link.GatewayAddress));
     }
 
+    /// <summary>
+    /// Local address of a real uplink (Wi-Fi or Ethernet) that is not the phone.
+    /// The direct-IP test binds to this address so it does not follow the USB
+    /// tether when that adapter happens to be the Windows default route.
+    /// </summary>
+    public static string? DirectSourceAddress(string? proxyHost = null, int? excludedInterfaceIndex = null)
+    {
+        foreach (var link in Detect())
+        {
+            if (excludedInterfaceIndex is not null && link.InterfaceIndex == excludedInterfaceIndex)
+            {
+                continue;
+            }
+
+            if (link.LooksLikeUsbTether)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(proxyHost) &&
+                string.Equals(link.GatewayAddress, proxyHost, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (link.LocalAddress.StartsWith("169.254.", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            return link.LocalAddress;
+        }
+
+        return null;
+    }
+
     public static IReadOnlyList<string> ProbeCommonHosts() =>
         new[] { "192.168.42.129", "192.168.43.1", "192.168.137.1" };
 

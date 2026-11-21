@@ -479,7 +479,9 @@ public sealed class SetupForm : Form
 
         try
         {
-            var result = await _probe.TestAsync(config);
+            var selectedLink = _adapterBox.SelectedItem is AdapterItem item ? item.Link : null;
+            var directSource = PhoneLinkDetector.DirectSourceAddress(config.Host, selectedLink?.InterfaceIndex);
+            var result = await _probe.TestAsync(config, directSource);
             var color = result.Success && !result.SameEgress
                 ? UiTheme.Success
                 : result.TcpReachable

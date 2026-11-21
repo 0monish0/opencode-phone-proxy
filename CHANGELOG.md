@@ -25,11 +25,12 @@ unchanged.
   the baseline when an earlier restore was declined.
 - Persisted route snapshot with restore on OpenCode exit, app exit, next start after
   a crash, and uninstall.
-- Proxy probe through `curl.exe` that compares the phone egress IP with the PC's
-  direct IP for HTTP, HTTPS, SOCKS5, and SOCKS5H.
+- Proxy probe through `curl.exe` for HTTP, HTTPS, SOCKS5, and SOCKS5H. The
+  direct-IP comparison binds to a non-USB Wi-Fi/Ethernet adapter, so a USB
+  default route cannot produce a false "same IP" warning.
 - Process-scoped proxy environment (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`,
-  `NO_PROXY`, `NODE_USE_ENV_PROXY`) plus `--proxy-server`, without touching the
-  Windows system proxy.
+  loopback-aware `NO_PROXY`) without `--proxy-server`, keeping OpenCode
+  Desktop's local sidecar connection off the phone proxy.
 - Tray menu: status, Launch, Stop, Test, Settings, View log, Start with Windows,
   Uninstall, Exit.
 - Opt-in autostart via the `HKCU` Run key.
