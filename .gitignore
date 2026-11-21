@@ -1,0 +1,7 @@
+dist/
+*.tar.gz
+*.sha256
+.DS_Store
+*.log
+.env
+.env.*
