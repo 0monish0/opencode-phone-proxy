@@ -170,7 +170,7 @@ Look for an interface such as `usb0`, `enx...`, or `enp0s20f0u4`. Pass it explic
 ./opencode-phone-proxy.sh --gui --interface <iface> --host <phone-ip>
 ```
 
-Do not type the angle brackets. Replace `<iface>` and `<phone-ip>` with real values.
+Do not type a angle brackets. Replace `<iface>` and `<phone-ip>` with real values.
 
 ### `bash: syntax error near unexpected token 'newline'`
 
